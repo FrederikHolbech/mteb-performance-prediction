@@ -13,7 +13,8 @@ This repository contains the code for the bachelor thesis on **predicting MTEB b
 │   ├── 02_build_training_data.py       # Merge into single training matrix
 │   ├── 03_extract_tokenizer_features.py # Extract tokenizer-level features
 │   ├── 04_train_and_evaluate.py        # Three-tier leave-one-task-out evaluation
-│   └── 05_shap_analysis.py            # Per-family SHAP analysis across tiers
+│   ├── 05_shap_analysis.py            # Per-family SHAP analysis across tiers
+│   └── 06_feature_analysis.py         # Correlation, clusters, ablation, lean model
 ├── inputEncodings/       # Unicode script data (for tokenizer analysis)
 │   └── data/
 │       ├── Scripts.txt           # Unicode script ranges
@@ -58,12 +59,22 @@ python scripts/03_extract_tokenizer_features.py
 python scripts/04_train_and_evaluate.py
 
 # Step 5: SHAP feature importance analysis
-#   - Per-family SHAP for each tier (using RandomForest)
+#   - Per-family SHAP for each tier (using lighter RandomForest for speed)
+#   - Subsamples up to 2000 rows per family for SHAP computation
 #   - Visualizes top features color-coded by data source
 python scripts/05_shap_analysis.py
+
+# Step 6: Feature correlation, clusters, ablation, and lean model
+#   - Pearson correlation heatmap, identifies highly-correlated pairs
+#   - Detects feature clusters (>2 features with |r| >= 0.85)
+#   - Leave-one-feature-out ablation to measure each feature's contribution
+#   - Builds a lean model keeping one representative per cluster
+python scripts/06_feature_analysis.py
 ```
 
 > **Note:** Steps 1 and 3 require internet access for HuggingFace API calls. Step 2 depends on Step 3's output (`tokenizer_features.csv`), so run Step 3 before Step 2 on a fresh setup, or run Step 2 twice.
+
+> **Caching:** Scripts 04–06 cache their expensive results to CSV. On subsequent runs, set the `RUN_*` flags at the top of each script to `False` to skip recomputation and load from cache.
 
 ## Feature Tiers
 

@@ -33,6 +33,8 @@ from src.config import (
     TIER1_FEATURES,
     README_FEATURES,
     DISCARDED_FEATURES,
+    RF_PARAMS,
+    EVAL_SEED,
     TARGET,
     TRAINING_DATA_PATH,
     SHAP_TIER1_PATH,
@@ -59,10 +61,23 @@ SHAP_PATHS = {
 
 def compute_shap_per_tier(df):
     """Compute per-family SHAP importance for each tier."""
+    # Lighter params for SHAP -- unlimited depth trees make TreeExplainer
+    # extremely slow.  Feature importance rankings are stable with shallower
+    # trees, so we cap depth and use fewer estimators here.
+    shap_rf_params = {
+        "n_estimators": 200,
+        "max_depth": 15,
+        "min_samples_leaf": 2,
+        "max_features": "sqrt",
+        "n_jobs": -1,
+        "random_state": EVAL_SEED,
+    }
+
     tier_shap_results = {}
     tier_global_shap = {}
 
-    for tier_name, features in TIERS.items():
+    for tier_idx, (tier_name, features) in enumerate(TIERS.items(), 1):
+        print(f"\n--- {tier_name} ({tier_idx}/3) ---")
         # Remove task_type for per-family analysis (we split by family)
         features_no_task = [f for f in features if f != "task_type"]
         cat_cols = [
@@ -74,31 +89,45 @@ def compute_shap_per_tier(df):
         family_importance = {}
         families = [f for f in df["task_type"].unique() if f != "Summarization"]
 
-        for family in families:
+        for fam_idx, family in enumerate(families, 1):
             df_family = df[df["task_type"] == family].copy()
             if len(df_family) < 100:
+                print(f"  [{fam_idx}/{len(families)}] {family}: skipped (<100 rows)")
                 continue
+
+            print(
+                f"  [{fam_idx}/{len(families)}] {family} ({len(df_family)} rows)...",
+                end=" ",
+                flush=True,
+            )
 
             df_fam = df_family[features_no_task + [TARGET]].copy()
             for col in cat_cols:
                 df_fam[col] = LabelEncoder().fit_transform(df_fam[col].astype(str))
 
-            X_fam = df_fam[features_no_task].apply(pd.to_numeric, errors="coerce")
+            X_fam = df_fam[features_no_task]
             y_fam = df_fam[TARGET]
 
-            mdl = RandomForestRegressor(
-                n_estimators=200, max_depth=15, n_jobs=-1, random_state=42
-            )
-            mdl.fit(X_fam.fillna(X_fam.median()), y_fam)
+            mdl = RandomForestRegressor(**shap_rf_params)
+            X_filled = X_fam.fillna(X_fam.median())
+            mdl.fit(X_filled, y_fam)
+
+            # Subsample for SHAP to keep runtime manageable
+            shap_max_samples = 2000
+            if len(X_filled) > shap_max_samples:
+                X_shap = X_filled.sample(shap_max_samples, random_state=EVAL_SEED)
+            else:
+                X_shap = X_filled
 
             explainer = shap.TreeExplainer(mdl)
-            shap_vals = explainer.shap_values(X_fam.fillna(X_fam.median()))
+            shap_vals = explainer.shap_values(X_shap)
 
             importance = pd.Series(
                 np.abs(shap_vals).mean(axis=0), index=features_no_task
             ).sort_values(ascending=False)
 
             family_importance[family] = importance
+            print("done")
 
         tier_shap_results[tier_name] = family_importance
 
@@ -201,15 +230,28 @@ def print_feature_rankings(tier_global_shap):
 # Main
 # ============================================================
 
+RUN_SHAP = False  # Set True to re-run SHAP analysis
+
 if __name__ == "__main__":
 
     df = pd.read_csv(TRAINING_DATA_PATH)
     print(f"Training data: {df.shape}")
 
-    print("\n Computing SHAP per tier")
-    tier_shap_results, tier_global_shap = compute_shap_per_tier(df)
+    all_cached = all(os.path.exists(p) for p in SHAP_PATHS.values())
 
-    print("\n Visualization")
+    if RUN_SHAP or not all_cached:
+        print("\nComputing SHAP per tier...")
+        tier_shap_results, tier_global_shap = compute_shap_per_tier(df)
+    else:
+        print("\nLoaded SHAP results from cache")
+        tier_global_shap = {}
+        for tier_name, path in SHAP_PATHS.items():
+            imp_df = pd.read_csv(path, index_col=0)
+            tier_global_shap[tier_name] = imp_df.mean(axis=1).sort_values(
+                ascending=False
+            )
+
+    print("\nVisualization...")
     plot_shap_comparison(tier_global_shap)
 
     print_feature_rankings(tier_global_shap)

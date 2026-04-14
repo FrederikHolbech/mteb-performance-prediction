@@ -13,7 +13,6 @@ Reads:
   data/training_data.csv
 
 Outputs:
-  output/grid_search_results.csv
   output/model_comparison.csv
   output/tier_results.csv
   output/tier_comparison_by_family.csv
@@ -24,6 +23,7 @@ Outputs:
 import os
 import sys
 import warnings
+from itertools import product
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -34,8 +34,6 @@ from sklearn.metrics import r2_score
 from sklearn.preprocessing import LabelEncoder
 
 warnings.filterwarnings("ignore")
-
-from itertools import product
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.config import (
@@ -51,7 +49,6 @@ from src.config import (
     OUTPUT_DIR,
     FIGURES_DIR,
 )
-from src.utils import encode_categoricals
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(FIGURES_DIR, exist_ok=True)

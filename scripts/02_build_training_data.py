@@ -48,6 +48,7 @@ def build_training_data():
         "downloads",
         "likes",
         "created_at",
+        "model_age_days",
         "pipeline_tag",
         "library_name",
         "model_type",
@@ -110,8 +111,6 @@ def build_training_data():
     df["log_num_samples"] = np.log1p(df["num_samples_test"])
 
     if "created_at" in df.columns:
-        df["created_at"] = pd.to_datetime(df["created_at"], utc=True, errors="coerce")
-        df["model_age_days"] = (pd.Timestamp.now(tz="UTC") - df["created_at"]).dt.days
         df = df.drop(columns=["created_at"])
 
     # --- Merge tokenizer features ---
