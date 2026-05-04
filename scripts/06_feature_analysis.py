@@ -51,6 +51,7 @@ from src.config import (
     OUTPUT_DIR,
     FIGURES_DIR,
 )
+from src.utils import shorten_feature_name
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(FIGURES_DIR, exist_ok=True)
@@ -310,17 +311,21 @@ def run_ablation_study(df, baseline_r2=None):
 def _plot_ablation(results_df):
     """Generate ablation bar chart."""
     results_sorted = results_df.sort_values("r2_delta")
-    fig, ax = plt.subplots(figsize=(10, max(8, len(results_sorted) * 0.25)))
+    fig, ax = plt.subplots(figsize=(14, max(10, len(results_sorted) * 0.28)))
     colors = ["#e74c3c" if d < 0 else "#27ae60" for d in results_sorted["r2_delta"]]
     ax.barh(range(len(results_sorted)), results_sorted["r2_delta"], color=colors)
     ax.set_yticks(range(len(results_sorted)))
-    ax.set_yticklabels(results_sorted["removed_feature"], fontsize=7)
+    display_labels = [
+        shorten_feature_name(feat) for feat in results_sorted["removed_feature"]
+    ]
+    ax.set_yticklabels(display_labels, fontsize=9)
     ax.axvline(0, color="black", linewidth=0.8)
-    ax.set_xlabel("R2 change when feature is removed")
-    ax.set_title(f"Ablation Study -- {ANALYSIS_TIER}")
+    ax.set_xlabel("R2 change when feature is removed", fontsize=12)
+    ax.set_title(f"Ablation Study -- {ANALYSIS_TIER}", fontsize=14)
+    ax.tick_params(axis="x", labelsize=11)
     plt.tight_layout()
     fig_path = os.path.join(FIGURES_DIR, "ablation_study.png")
-    plt.savefig(fig_path, dpi=150)
+    plt.savefig(fig_path, dpi=300)
     plt.close()
     print(f"Saved: {fig_path}")
 

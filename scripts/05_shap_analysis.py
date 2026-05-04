@@ -43,6 +43,7 @@ from src.config import (
     OUTPUT_DIR,
     FIGURES_DIR,
 )
+from src.utils import shorten_feature_name
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(FIGURES_DIR, exist_ok=True)
@@ -159,7 +160,7 @@ def plot_shap_comparison(tier_global_shap):
     readme_set = set(README_FEATURES)
     discarded_set = set(DISCARDED_FEATURES)
 
-    fig, axes = plt.subplots(1, 3, figsize=(22, 8), sharey=False)
+    fig, axes = plt.subplots(1, 3, figsize=(24, 10), sharey=False)
 
     for idx, (tier_name, global_imp) in enumerate(tier_global_shap.items()):
         ax = axes[idx]
@@ -176,11 +177,13 @@ def plot_shap_comparison(tier_global_shap):
                 bar_colors.append("#2196F3")  # blue for API-only
 
         ax.barh(range(len(top15)), top15.values, color=bar_colors)
+        display_labels = [shorten_feature_name(feat) for feat in top15.index]
         ax.set_yticks(range(len(top15)))
-        ax.set_yticklabels(top15.index, fontsize=8)
-        ax.set_xlabel("Mean |SHAP|")
-        ax.set_title(f"{tier_name}\n({len(TIERS[tier_name])} features)", fontsize=11)
+        ax.set_yticklabels(display_labels, fontsize=10)
+        ax.set_xlabel("Mean |SHAP|", fontsize=11)
+        ax.set_title(f"{tier_name}\n({len(TIERS[tier_name])} features)", fontsize=12)
         ax.grid(axis="x", alpha=0.3)
+        ax.tick_params(axis="x", labelsize=10)
 
     legend_elements = [
         Patch(facecolor="#2196F3", label="API-only features"),
@@ -191,14 +194,14 @@ def plot_shap_comparison(tier_global_shap):
         handles=legend_elements,
         loc="lower center",
         ncol=3,
-        fontsize=10,
+        fontsize=11,
         bbox_to_anchor=(0.5, -0.02),
     )
 
-    plt.suptitle("Top-15 Global SHAP Features — Three Tiers", fontsize=14, y=1.01)
+    plt.suptitle("Top-15 Global SHAP Features — Three Tiers", fontsize=16, y=1.01)
     plt.tight_layout()
     fig_path = os.path.join(FIGURES_DIR, "shap_tier_comparison.png")
-    plt.savefig(fig_path, dpi=150, bbox_inches="tight")
+    plt.savefig(fig_path, dpi=300, bbox_inches="tight")
     plt.close()
     print(f"\nSaved {fig_path}")
 

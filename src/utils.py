@@ -13,6 +13,68 @@ from sklearn.preprocessing import LabelEncoder
 
 from src.config import BOOLEAN_COLUMNS, FAMILY_PATTERNS
 
+# ============================================================
+# Feature label display mapping
+# ============================================================
+
+FEATURE_DISPLAY_NAMES = {
+    "pct_continuation_tokens": "cont_token_pct",
+    "pre_tokenizer_chain": "pretokenizer",
+    "avg_subword_len_chars": "avg_subword_chars",
+    "avg_subword_len_bytes": "avg_subword_bytes",
+    "median_subword_len_chars": "median_subword_chars",
+    "num_scripts_in_vocab": "scripts_in_vocab",
+    "tokenizer_main_model": "tokenizer_model",
+    "tokenizer_class": "tokenizer_cls",
+    "normalizer_type": "normalizer",
+    "position_embedding_type": "pos_emb_type",
+    "num_attention_heads": "attn_heads",
+    "intermediate_size": "ffn_size",
+    "embedding_dim": "emb_dim",
+    "hidden_size": "hidden_dim",
+    "num_layers": "layers",
+    "num_languages": "n_languages",
+    "num_domains": "n_domains",
+    "num_subtypes": "n_subtypes",
+    "num_samples_test": "n_test_samples",
+    "avg_text_length": "avg_text_len",
+    "annotations_creators": "ann_creators",
+    "base_model_family": "base_family",
+    "is_instruction_tuned": "instr_tuned",
+    "is_multilingual": "multilingual",
+    "is_english": "english_task",
+    "model_type": "model_arch",
+    "pooling_mode": "pooling",
+    "main_score": "task_metric",
+    "uses_matryoshka": "matryoshka",
+    "log_num_samples": "log_n_samples",
+    "log_param_count": "log_params",
+    "param_count": "params",
+    "max_position_embeddings": "max_pos_emb",
+    "max_seq_length": "max_seq_len",
+    "actual_vocab_size": "actual_vocab",
+    "vocab_size": "vocab_size",
+    "embed_param_ratio": "emb_param_ratio",
+    "embedding_ratio": "emb_ratio",
+    "head_dim": "head_dim",
+    "ffn_ratio": "ffn_ratio",
+    "downloads": "downloads",
+    "model_age_days": "model_age",
+    "num_datasets_listed": "n_datasets",
+    "loss_contrastive": "contrastive_loss",
+    "loss_triplet": "triplet_loss",
+    "train_commoncrawl": "train_cc",
+    "train_classification": "train_clf",
+    "train_multilingual": "train_multi",
+    "train_retrieval": "train_retr",
+    "train_wikipedia": "train_wiki",
+}
+
+
+def shorten_feature_name(feature_name):
+    """Return a compact display label for a feature name."""
+    return FEATURE_DISPLAY_NAMES.get(feature_name, feature_name)
+
 
 # ============================================================
 # Data loading & encoding
