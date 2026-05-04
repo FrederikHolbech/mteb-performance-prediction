@@ -26,3 +26,6 @@ Thumbs.db
 # Temp
 *.tmp
 _output.txt
+
+# Local thesis manuscript (kept out of GitHub)
+thesis.tex
