@@ -19,7 +19,7 @@ Outputs:
   output/feature_clusters.csv
   output/ablation_results.csv
   output/lean_model_results.csv
-  output/figures/correlation_heatmap.png
+    output/figures/correlation_heatmap.png
   output/figures/ablation_study.png
 """
 
@@ -43,6 +43,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.config import (
     TIERS,
     TIER1_CATEGORICALS,
+    SHAP_TIER2_PATH,
     RF_PARAMS,
     EVAL_SEED,
     EVAL_N_TASKS,
@@ -147,18 +148,41 @@ def run_correlation_analysis(df):
         print(pairs_df.to_string(index=False))
     print(f"Saved: {pairs_path}")
 
-    # Heatmap
-    fig, ax = plt.subplots(figsize=(20, 16))
-    im = ax.imshow(corr.values, cmap="RdBu_r", vmin=-1, vmax=1, aspect="auto")
-    ax.set_xticks(range(len(cols)))
-    ax.set_yticks(range(len(cols)))
-    ax.set_xticklabels(cols, rotation=90, fontsize=6)
-    ax.set_yticklabels(cols, fontsize=6)
-    plt.colorbar(im, ax=ax, label="Pearson r")
-    ax.set_title(f"Feature Correlation Heatmap ({ANALYSIS_TIER}, {len(cols)} features)")
+    # Focused heatmap: top-15 features from Tier-2 SHAP global importance
+    shap_df = pd.read_csv(SHAP_TIER2_PATH, index_col=0)
+    top15 = shap_df.mean(axis=1).sort_values(ascending=False).head(15).index.tolist()
+    top15 = [f for f in top15 if f in corr.index]
+    corr_top = corr.loc[top15, top15]
+
+    fig, ax = plt.subplots(figsize=(11.5, 9.5))
+    im = ax.imshow(corr_top.values, cmap="coolwarm", vmin=-1, vmax=1)
+    labels = [shorten_feature_name(f) for f in corr_top.columns]
+    ax.set_xticks(range(len(labels)))
+    ax.set_yticks(range(len(labels)))
+    ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=9)
+    ax.set_yticklabels(labels, fontsize=9)
+
+    # Annotate matrix values for readability in thesis PDF.
+    for i in range(corr_top.shape[0]):
+        for j in range(corr_top.shape[1]):
+            val = corr_top.iloc[i, j]
+            txt_color = "white" if abs(val) > 0.6 else "black"
+            ax.text(
+                j,
+                i,
+                f"{val:.2f}",
+                ha="center",
+                va="center",
+                fontsize=7,
+                color=txt_color,
+            )
+
+    cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    cbar.set_label("Pearson r", fontsize=10)
+    ax.set_title("Correlation Heatmap: Top-15 Tier-2 SHAP Features", fontsize=12)
     plt.tight_layout()
     fig_path = os.path.join(FIGURES_DIR, "correlation_heatmap.png")
-    plt.savefig(fig_path, dpi=150)
+    plt.savefig(fig_path, dpi=300)
     plt.close()
     print(f"Saved: {fig_path}")
 
