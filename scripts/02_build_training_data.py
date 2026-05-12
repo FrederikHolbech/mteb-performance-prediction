@@ -103,13 +103,6 @@ def build_training_data():
     # --- Compute normalized rank per task ---
     df["norm_rank"] = df.groupby("task_name")["score"].rank(pct=True)
 
-    # --- Derived features ---
-    df["head_dim"] = df["hidden_size"] / df["num_attention_heads"]
-    df["ffn_ratio"] = df["intermediate_size"] / df["hidden_size"]
-    df["log_param_count"] = np.log1p(df["param_count"])
-    df["embedding_ratio"] = df["embedding_dim"] / df["hidden_size"]
-    df["log_num_samples"] = np.log1p(df["num_samples_test"])
-
     if "created_at" in df.columns:
         df = df.drop(columns=["created_at"])
 
@@ -132,11 +125,6 @@ def build_training_data():
         ]
         tok_cols = [c for c in tok_cols if c in tok.columns]
         df = df.merge(tok[tok_cols], on="model_name", how="left")
-
-        # Embedding param ratio
-        df["embed_param_ratio"] = (df["vocab_size"] * df["hidden_size"]) / df[
-            "param_count"
-        ]
 
         # Boolean tokenizer features
         for col in ["is_lowercased", "strips_accents"]:

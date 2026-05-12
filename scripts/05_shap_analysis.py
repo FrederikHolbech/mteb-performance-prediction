@@ -21,7 +21,6 @@ import sys
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import shap
 from matplotlib.patches import Patch
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import LabelEncoder
@@ -62,6 +61,8 @@ SHAP_PATHS = {
 
 def compute_shap_per_tier(df):
     """Compute per-family SHAP importance for each tier."""
+    import shap
+
     # Lighter params for SHAP -- unlimited depth trees make TreeExplainer
     # extremely slow.  Feature importance rankings are stable with shallower
     # trees, so we cap depth and use fewer estimators here.
@@ -160,7 +161,13 @@ def plot_shap_comparison(tier_global_shap):
     readme_set = set(README_FEATURES)
     discarded_set = set(DISCARDED_FEATURES)
 
-    fig, axes = plt.subplots(1, 3, figsize=(24, 10), sharey=False)
+    shared_xmax = 0.0
+    for global_imp in tier_global_shap.values():
+        shared_xmax = max(
+            shared_xmax, global_imp.sort_values(ascending=True).tail(15).max()
+        )
+
+    fig, axes = plt.subplots(1, 3, figsize=(18.5, 10), sharey=False, sharex=True)
 
     for idx, (tier_name, global_imp) in enumerate(tier_global_shap.items()):
         ax = axes[idx]
@@ -179,11 +186,12 @@ def plot_shap_comparison(tier_global_shap):
         ax.barh(range(len(top15)), top15.values, color=bar_colors)
         display_labels = [shorten_feature_name(feat) for feat in top15.index]
         ax.set_yticks(range(len(top15)))
-        ax.set_yticklabels(display_labels, fontsize=10)
-        ax.set_xlabel("Mean |SHAP|", fontsize=11)
-        ax.set_title(f"{tier_name}\n({len(TIERS[tier_name])} features)", fontsize=12)
+        ax.set_yticklabels(display_labels, fontsize=13)
+        ax.set_xlabel("Mean |SHAP|", fontsize=14)
+        ax.set_title(f"{tier_name}\n({len(TIERS[tier_name])} features)", fontsize=15)
         ax.grid(axis="x", alpha=0.3)
-        ax.tick_params(axis="x", labelsize=10)
+        ax.tick_params(axis="x", labelsize=13)
+        ax.set_xlim(0, shared_xmax * 1.05)
 
     legend_elements = [
         Patch(facecolor="#2196F3", label="API-only features"),
@@ -194,12 +202,13 @@ def plot_shap_comparison(tier_global_shap):
         handles=legend_elements,
         loc="lower center",
         ncol=3,
-        fontsize=11,
+        fontsize=14,
         bbox_to_anchor=(0.5, -0.02),
     )
 
-    plt.suptitle("Top-15 Global SHAP Features — Three Tiers", fontsize=16, y=1.01)
-    plt.tight_layout()
+    plt.suptitle("Top-15 Global SHAP Features — Three Tiers", fontsize=19, y=1.01)
+    fig.subplots_adjust(wspace=0.38)
+    plt.tight_layout(rect=(0, 0.05, 1, 1))
     fig_path = os.path.join(FIGURES_DIR, "shap_tier_comparison.png")
     plt.savefig(fig_path, dpi=300, bbox_inches="tight")
     plt.close()

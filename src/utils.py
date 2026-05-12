@@ -47,17 +47,11 @@ FEATURE_DISPLAY_NAMES = {
     "pooling_mode": "pooling",
     "main_score": "task_metric",
     "uses_matryoshka": "matryoshka",
-    "log_num_samples": "log_n_samples",
-    "log_param_count": "log_params",
     "param_count": "params",
     "max_position_embeddings": "max_pos_emb",
     "max_seq_length": "max_seq_len",
     "actual_vocab_size": "actual_vocab",
     "vocab_size": "vocab_size",
-    "embed_param_ratio": "emb_param_ratio",
-    "embedding_ratio": "emb_ratio",
-    "head_dim": "head_dim",
-    "ffn_ratio": "ffn_ratio",
     "downloads": "downloads",
     "model_age_days": "model_age",
     "num_datasets_listed": "n_datasets",
@@ -74,6 +68,19 @@ FEATURE_DISPLAY_NAMES = {
 def shorten_feature_name(feature_name):
     """Return a compact display label for a feature name."""
     return FEATURE_DISPLAY_NAMES.get(feature_name, feature_name)
+
+
+def sample_eligible_tasks(task_names, max_tasks, seed, min_rows=5):
+    """Sample tasks after filtering to folds with enough observations."""
+    task_counts = task_names.value_counts()
+    eligible_tasks = task_counts[task_counts >= min_rows].index.to_numpy()
+
+    if len(eligible_tasks) == 0:
+        return eligible_tasks
+
+    rng = np.random.default_rng(seed)
+    sample_size = min(max_tasks, len(eligible_tasks))
+    return rng.choice(eligible_tasks, size=sample_size, replace=False)
 
 
 # ============================================================

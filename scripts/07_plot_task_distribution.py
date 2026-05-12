@@ -1,4 +1,4 @@
-"""Step 7: Plot task-family distribution with English subset highlighted.
+"""Step 7: Plot task-family distribution with English coverage split out.
 
 Reads:
   data/task_metadata.csv
@@ -45,19 +45,41 @@ def main():
         .fillna(0)
         .astype(int)
     )
-
+    multilingual = task_df[
+        task_df["is_multilingual"].astype(str).str.lower().isin(["true", "1"])
+    ]
+    english_only = (
+        task_df[
+            task_df["is_english"].astype(str).str.lower().isin(["true", "1"])
+            & ~task_df["is_multilingual"].astype(str).str.lower().isin(["true", "1"])
+        ]
+        .groupby("task_type")["task_name"]
+        .nunique()
+        .reindex(keep_families)
+        .fillna(0)
+        .astype(int)
+    )
+    english_multilingual = english - english_only
     non_english = total - english
+    english_only_pct = (100 * english_only / total).round(1)
 
     x = np.arange(len(keep_families))
 
-    fig, ax = plt.subplots(figsize=(11, 6.5))
-    ax.bar(x, non_english.values, color="#C8D6E5", label="Non-English tasks")
+    fig, ax = plt.subplots(figsize=(11.5, 6.8))
+    ax.bar(x, non_english.values, color="#D9D9D9", label="Tasks without English")
     ax.bar(
         x,
-        english.values,
+        english_multilingual.values,
         bottom=non_english.values,
-        color="#1F77B4",
-        label="Tasks including English",
+        color="#79B6F2",
+        label="Multilingual tasks including English",
+    )
+    ax.bar(
+        x,
+        english_only.values,
+        bottom=(non_english + english_multilingual).values,
+        color="#1F4E79",
+        label="English-only tasks",
     )
 
     ax.set_xticks(x)
@@ -78,9 +100,18 @@ def main():
     ax.set_title("Task-family distribution with English coverage")
     ax.grid(axis="y", alpha=0.25)
 
-    # Annotate totals on top of each bar.
+    # Annotate totals and English-only percentages on each bar.
     for i, t in enumerate(total.values):
         ax.text(i, t + 3, str(int(t)), ha="center", va="bottom", fontsize=9)
+        ax.text(
+            i,
+            t + 14,
+            f"{english_only_pct.iloc[i]:.1f}% EO",
+            ha="center",
+            va="bottom",
+            fontsize=8,
+            color="#1F4E79",
+        )
 
     ax.legend(loc="upper right")
     fig.tight_layout()
@@ -94,6 +125,10 @@ def main():
     print(total.to_string())
     print("\nEnglish-including tasks by family:")
     print(english.to_string())
+    print("\nEnglish-only tasks by family:")
+    print(english_only.to_string())
+    print("\nEnglish-only percentage by family:")
+    print(english_only_pct.to_string())
 
 
 if __name__ == "__main__":

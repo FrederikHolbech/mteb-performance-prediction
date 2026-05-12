@@ -17,6 +17,7 @@ Outputs:
   output/correlation_matrix.csv
   output/high_correlations.csv
   output/feature_clusters.csv
+    output/cluster_threshold_sweep.csv
   output/ablation_results.csv
   output/lean_model_results.csv
     output/figures/correlation_heatmap.png
@@ -52,7 +53,7 @@ from src.config import (
     OUTPUT_DIR,
     FIGURES_DIR,
 )
-from src.utils import shorten_feature_name
+from src.utils import shorten_feature_name, sample_eligible_tasks
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(FIGURES_DIR, exist_ok=True)
@@ -63,6 +64,7 @@ ANALYSIS_FEATURES = TIERS[ANALYSIS_TIER]
 
 # Correlation threshold
 CORR_THRESHOLD = 0.85
+CLUSTER_SWEEP_THRESHOLDS = [0.85, 0.825, 0.80, 0.775, 0.75, 0.70]
 
 # Caching flags
 RUN_CORRELATION = True  # Set True to re-run correlation analysis
@@ -94,8 +96,6 @@ def _lot_o_r2(X, y, task_names, eval_tasks, rf_params):
         train_mask = ~test_mask
         X_train, X_test = X[train_mask], X[test_mask]
         y_train, y_test = y[train_mask], y[test_mask]
-        if len(X_test) < 5:
-            continue
         train_med = X_train.median()
         X_train_f = X_train.fillna(train_med).fillna(0)
         X_test_f = X_test.fillna(train_med).fillna(0)
@@ -153,9 +153,10 @@ def run_correlation_analysis(df):
     top15 = shap_df.mean(axis=1).sort_values(ascending=False).head(15).index.tolist()
     top15 = [f for f in top15 if f in corr.index]
     corr_top = corr.loc[top15, top15]
+    corr_top_abs = corr_top.abs()
 
     fig, ax = plt.subplots(figsize=(11.5, 9.5))
-    im = ax.imshow(corr_top.values, cmap="coolwarm", vmin=-1, vmax=1)
+    im = ax.imshow(corr_top_abs.values, cmap="Blues", vmin=0, vmax=1)
     labels = [shorten_feature_name(f) for f in corr_top.columns]
     ax.set_xticks(range(len(labels)))
     ax.set_yticks(range(len(labels)))
@@ -165,8 +166,8 @@ def run_correlation_analysis(df):
     # Annotate matrix values for readability in thesis PDF.
     for i in range(corr_top.shape[0]):
         for j in range(corr_top.shape[1]):
-            val = corr_top.iloc[i, j]
-            txt_color = "white" if abs(val) > 0.6 else "black"
+            val = corr_top_abs.iloc[i, j]
+            txt_color = "white" if val > 0.6 else "black"
             ax.text(
                 j,
                 i,
@@ -178,8 +179,10 @@ def run_correlation_analysis(df):
             )
 
     cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    cbar.set_label("Pearson r", fontsize=10)
-    ax.set_title("Correlation Heatmap: Top-15 Tier-2 SHAP Features", fontsize=12)
+    cbar.set_label("Absolute Pearson r", fontsize=10)
+    ax.set_title(
+        "Absolute Correlation Heatmap: Top-15 Tier-2 SHAP Features", fontsize=12
+    )
     plt.tight_layout()
     fig_path = os.path.join(FIGURES_DIR, "correlation_heatmap.png")
     plt.savefig(fig_path, dpi=300)
@@ -253,6 +256,49 @@ def find_feature_clusters(corr, threshold=CORR_THRESHOLD):
     return clusters_df
 
 
+def run_cluster_threshold_sweep(corr, thresholds=CLUSTER_SWEEP_THRESHOLDS):
+    """Measure how cluster membership changes as the correlation threshold is lowered."""
+    print("\n" + "=" * 60)
+    print("1c. CLUSTER THRESHOLD SENSITIVITY")
+    print("=" * 60)
+
+    rows = []
+    for threshold in thresholds:
+        clusters_df = find_feature_clusters(corr, threshold=threshold)
+        if len(clusters_df) == 0:
+            rows.append(
+                {
+                    "threshold": threshold,
+                    "cluster_id": np.nan,
+                    "cluster_size": 0,
+                    "features": "",
+                    "n_clusters": 0,
+                }
+            )
+            continue
+
+        n_clusters = clusters_df["cluster_id"].nunique()
+        for cluster_id in sorted(clusters_df["cluster_id"].unique()):
+            members = clusters_df.loc[
+                clusters_df["cluster_id"] == cluster_id, "feature"
+            ].tolist()
+            rows.append(
+                {
+                    "threshold": threshold,
+                    "cluster_id": int(cluster_id),
+                    "cluster_size": len(members),
+                    "features": ", ".join(members),
+                    "n_clusters": int(n_clusters),
+                }
+            )
+
+    sweep_df = pd.DataFrame(rows)
+    sweep_path = os.path.join(OUTPUT_DIR, "cluster_threshold_sweep.csv")
+    sweep_df.to_csv(sweep_path, index=False)
+    print(f"Saved: {sweep_path}")
+    return sweep_df
+
+
 # ============================================================
 # 2. Ablation Study (leave-one-feature-out)
 # ============================================================
@@ -270,11 +316,7 @@ def run_ablation_study(df, baseline_r2=None):
     X_full, y, task_names = _prepare(df, ANALYSIS_FEATURES)
 
     # Pick evaluation tasks
-    tasks_all = df["task_name"].unique()
-    np.random.seed(EVAL_SEED)
-    eval_tasks = np.random.choice(
-        tasks_all, size=min(EVAL_N_TASKS, len(tasks_all)), replace=False
-    )
+    eval_tasks = sample_eligible_tasks(task_names, EVAL_N_TASKS, EVAL_SEED)
 
     # Baseline: all features
     if baseline_r2 is None:
@@ -396,11 +438,7 @@ def run_lean_model(df, clusters_df, ablation_df, baseline_r2):
 
     # Evaluate lean model
     X_lean, y, task_names = _prepare(df, lean_features)
-    tasks_all = df["task_name"].unique()
-    np.random.seed(EVAL_SEED)
-    eval_tasks = np.random.choice(
-        tasks_all, size=min(EVAL_N_TASKS, len(tasks_all)), replace=False
-    )
+    eval_tasks = sample_eligible_tasks(task_names, EVAL_N_TASKS, EVAL_SEED)
 
     print("\nEvaluating lean model (LOT-O CV)...")
     lean_r2 = _lot_o_r2(X_lean, y, task_names, eval_tasks, rf_params)
@@ -463,6 +501,15 @@ if __name__ == "__main__":
         n_clusters = clusters_df["cluster_id"].nunique() if len(clusters_df) > 0 else 0
         print(f"Loaded cluster data from cache ({n_clusters} clusters)")
 
+    sweep_path = os.path.join(OUTPUT_DIR, "cluster_threshold_sweep.csv")
+    if RUN_CORRELATION or not os.path.exists(sweep_path):
+        cluster_sweep_df = run_cluster_threshold_sweep(corr)
+    else:
+        cluster_sweep_df = pd.read_csv(sweep_path)
+        print(
+            f"Loaded cluster threshold sweep from cache ({cluster_sweep_df['threshold'].nunique()} thresholds)"
+        )
+
     # 2. Ablation
     ablation_path = os.path.join(OUTPUT_DIR, "ablation_results.csv")
 
@@ -498,6 +545,14 @@ if __name__ == "__main__":
     print(f"Highly correlated pairs (|r| >= {CORR_THRESHOLD}): {len(high_corr)}")
     n_clusters = clusters_df["cluster_id"].nunique() if len(clusters_df) > 0 else 0
     print(f"Feature clusters: {n_clusters}")
+    if len(cluster_sweep_df) > 0:
+        print(
+            "Cluster thresholds checked: "
+            + ", ".join(
+                str(t)
+                for t in sorted(cluster_sweep_df["threshold"].unique(), reverse=True)
+            )
+        )
     n_harmful = len(ablation_df[ablation_df["r2_delta"] > 0])
     n_helpful = len(ablation_df[ablation_df["r2_delta"] < -0.001])
     print(f"Features whose removal IMPROVES R2: {n_harmful}")

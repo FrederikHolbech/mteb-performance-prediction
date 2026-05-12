@@ -156,11 +156,6 @@ TIER1_MODEL_NUMERIC = [
     "intermediate_size",
     "embedding_dim",
     "max_seq_length",
-    # Derived from architecture
-    "head_dim",
-    "ffn_ratio",
-    "log_param_count",
-    "embedding_ratio",
     # Tokenizer features (from tokenizer.json)
     "actual_vocab_size",
     "avg_subword_len_chars",
@@ -170,7 +165,6 @@ TIER1_MODEL_NUMERIC = [
     "num_scripts_in_vocab",
     "pct_latin_tokens",
     "pct_cjk_tokens",
-    "embed_param_ratio",
     "is_lowercased",
     "strips_accents",
 ]
@@ -189,7 +183,6 @@ TIER1_TASK_NUMERIC = [
     "domain_code",
     "num_subtypes",
     "num_samples_test",
-    "log_num_samples",
     "avg_text_length",
     "unique_labels",
 ]

@@ -49,6 +49,7 @@ from src.config import (
     OUTPUT_DIR,
     FIGURES_DIR,
 )
+from src.utils import sample_eligible_tasks
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(FIGURES_DIR, exist_ok=True)
@@ -84,12 +85,7 @@ def run_grid_search(df, tier_name="Tier 2 (+ README)"):
     """Grid search over RandomForest hyperparameters using LOT-O CV."""
     features = TIERS[tier_name]
     X, y, task_names = _prepare_tier(df, features)
-
-    tasks_all = df["task_name"].unique()
-    np.random.seed(EVAL_SEED)
-    eval_tasks = np.random.choice(
-        tasks_all, size=min(EVAL_N_TASKS, len(tasks_all)), replace=False
-    )
+    eval_tasks = sample_eligible_tasks(task_names, EVAL_N_TASKS, EVAL_SEED)
 
     # Build parameter combinations
     param_names = list(RF_GRID.keys())
@@ -112,9 +108,6 @@ def run_grid_search(df, tier_name="Tier 2 (+ README)"):
             train_mask = ~test_mask
             X_train, X_test = X[train_mask], X[test_mask]
             y_train, y_test = y[train_mask], y[test_mask]
-
-            if len(X_test) < 5:
-                continue
 
             train_med = X_train.median()
             X_train_f = X_train.fillna(train_med).fillna(0)
@@ -172,11 +165,7 @@ def run_model_comparison(df, rf_params=None, tier_name="Tier 2 (+ README)"):
     y = df_tier[TARGET]
     cat_indices = [features.index(c) for c in cat_cols]
 
-    tasks_all = df["task_name"].unique()
-    np.random.seed(EVAL_SEED)
-    eval_tasks = np.random.choice(
-        tasks_all, size=min(EVAL_N_TASKS, len(tasks_all)), replace=False
-    )
+    eval_tasks = sample_eligible_tasks(df_tier["task_name"], EVAL_N_TASKS, EVAL_SEED)
 
     lgb_params = {"n_estimators": 200, "learning_rate": 0.05, "verbose": -1}
     xgb_params = {
@@ -204,9 +193,6 @@ def run_model_comparison(df, rf_params=None, tier_name="Tier 2 (+ README)"):
         train_mask = ~test_mask
         X_train, X_test = X[train_mask], X[test_mask]
         y_train, y_test = y[train_mask], y[test_mask]
-
-        if len(X_test) < 5:
-            continue
 
         train_med = X_train.median()
         X_train_f = X_train.fillna(train_med).fillna(0)
@@ -328,16 +314,12 @@ def run_model_comparison(df, rf_params=None, tier_name="Tier 2 (+ README)"):
 def run_tier_evaluation(df, rf_params=None):
     """Run leave-one-task-out CV for all three tiers."""
     rf_params = rf_params or RF_PARAMS
-    tasks_all = df["task_name"].unique()
-    np.random.seed(EVAL_SEED)
-    eval_tasks = np.random.choice(
-        tasks_all, size=min(EVAL_N_TASKS, len(tasks_all)), replace=False
-    )
 
     tier_results = {}
 
     for tier_name, features in TIERS.items():
         X, y, task_names = _prepare_tier(df, features)
+        eval_tasks = sample_eligible_tasks(task_names, EVAL_N_TASKS, EVAL_SEED)
 
         ridge_scores, rf_scores = [], []
 
@@ -346,9 +328,6 @@ def run_tier_evaluation(df, rf_params=None):
             train_mask = ~test_mask
             X_train, X_test = X[train_mask], X[test_mask]
             y_train, y_test = y[train_mask], y[test_mask]
-
-            if len(X_test) < 5:
-                continue
 
             train_med = X_train.median()
             X_train_f = X_train.fillna(train_med).fillna(0)
@@ -428,16 +407,12 @@ def run_family_breakdown(df, rf_params=None, max_tasks_per_family=30):
         X, y, task_names = _prepare_tier(df, features)
 
         for task_family in df["task_type"].unique():
-            family_tasks = df[df["task_type"] == task_family]["task_name"].unique()
-            if len(family_tasks) < 5:
+            family_task_names = task_names[df["task_type"] == task_family]
+            family_tasks = sample_eligible_tasks(
+                family_task_names, max_tasks_per_family, EVAL_SEED
+            )
+            if len(family_tasks) == 0:
                 continue
-
-            # Sample tasks to keep runtime manageable
-            np.random.seed(EVAL_SEED)
-            if len(family_tasks) > max_tasks_per_family:
-                family_tasks = np.random.choice(
-                    family_tasks, size=max_tasks_per_family, replace=False
-                )
 
             family_scores = []
             for task in family_tasks:
@@ -445,9 +420,6 @@ def run_family_breakdown(df, rf_params=None, max_tasks_per_family=30):
                 train_mask = ~test_mask
                 X_train, X_test = X[train_mask], X[test_mask]
                 y_train, y_test = y[train_mask], y[test_mask]
-
-                if len(X_test) < 5:
-                    continue
 
                 train_med = X_train.median()
                 X_train_f = X_train.fillna(train_med).fillna(0)
@@ -525,6 +497,142 @@ def run_family_breakdown(df, rf_params=None, max_tasks_per_family=30):
     print(f"\nSaved {TIER_COMPARISON_PATH}")
 
     return tier_dfs, families_order
+
+
+# ============================================================
+# Ranking-oriented candidate analysis (Tier 2 RandomForest)
+# ============================================================
+
+
+def run_candidate_analysis(
+    df,
+    rf_params=None,
+    tier_name="Tier 2 (+ README)",
+    top_k_values=(1, 3, 5, 10),
+):
+    """Measure how well the top predicted candidates recover the true best model."""
+    rf_params = rf_params or RF_PARAMS
+    features = TIERS[tier_name]
+    cat_cols = [
+        c for c in features if df[c].dtype == "object" or c in TIER1_CATEGORICALS
+    ]
+
+    df_tier = df[["model_name", "task_name", TARGET] + features].copy()
+    for col in cat_cols:
+        df_tier[col] = LabelEncoder().fit_transform(df_tier[col].astype(str))
+
+    X = df_tier[features]
+    y = df_tier[TARGET]
+    task_names = df_tier["task_name"]
+    eval_tasks = sample_eligible_tasks(task_names, EVAL_N_TASKS, EVAL_SEED)
+
+    per_task_rows = []
+    for task in eval_tasks:
+        test_mask = task_names == task
+        train_mask = ~test_mask
+        X_train, X_test = X[train_mask], X[test_mask]
+        y_train, y_test = y[train_mask], y[test_mask]
+
+        train_med = X_train.median()
+        X_train_f = X_train.fillna(train_med).fillna(0)
+        X_test_f = X_test.fillna(train_med).fillna(0)
+
+        model = RandomForestRegressor(**rf_params)
+        model.fit(X_train_f, y_train)
+        preds = model.predict(X_test_f)
+
+        task_df = df_tier.loc[test_mask, ["model_name"]].copy()
+        task_df["y_true"] = y_test.to_numpy()
+        task_df["y_pred"] = preds
+        task_df = task_df.sort_values("y_pred", ascending=False).reset_index(drop=True)
+
+        best_true_idx = task_df["y_true"].idxmax()
+        best_true = task_df.loc[best_true_idx, "y_true"]
+        top_pick_true = task_df.loc[0, "y_true"]
+        top_pick_true_rank = (
+            task_df["y_true"].rank(ascending=False, method="min").iloc[0]
+        )
+        winner_pred_rank = int(best_true_idx) + 1
+
+        row = {
+            "task_name": task,
+            "n_models": len(task_df),
+            "winner_model": task_df.loc[best_true_idx, "model_name"],
+            "winner_pred_rank": winner_pred_rank,
+            "top_pick_model": task_df.loc[0, "model_name"],
+            "top_pick_true_norm_rank": float(top_pick_true),
+            "top_pick_true_rank": int(top_pick_true_rank),
+            "top_pick_regret": float(best_true - top_pick_true),
+        }
+
+        for k in top_k_values:
+            top_candidates = task_df.head(min(k, len(task_df)))
+            best_in_top_k = top_candidates["y_true"].max()
+            row[f"hit_at_{k}"] = int(winner_pred_rank <= k)
+            row[f"best_norm_rank_in_top_{k}"] = float(best_in_top_k)
+            row[f"regret_at_{k}"] = float(best_true - best_in_top_k)
+
+        per_task_rows.append(row)
+
+    per_task_df = pd.DataFrame(per_task_rows)
+    per_task_path = os.path.join(OUTPUT_DIR, "candidate_ranking_per_task.csv")
+    per_task_df.to_csv(per_task_path, index=False)
+    print(f"Saved {per_task_path}")
+
+    summary_rows = [
+        {"metric": "n_tasks", "value": float(len(per_task_df))},
+        {
+            "metric": "mean_top_pick_true_norm_rank",
+            "value": float(per_task_df["top_pick_true_norm_rank"].mean()),
+        },
+        {
+            "metric": "mean_top_pick_true_rank",
+            "value": float(per_task_df["top_pick_true_rank"].mean()),
+        },
+        {
+            "metric": "mean_top_pick_regret",
+            "value": float(per_task_df["top_pick_regret"].mean()),
+        },
+    ]
+    for k in top_k_values:
+        summary_rows.extend(
+            [
+                {
+                    "metric": f"hit_rate_at_{k}",
+                    "value": float(per_task_df[f"hit_at_{k}"].mean()),
+                },
+                {
+                    "metric": f"mean_regret_at_{k}",
+                    "value": float(per_task_df[f"regret_at_{k}"].mean()),
+                },
+            ]
+        )
+
+    summary_df = pd.DataFrame(summary_rows)
+    summary_path = os.path.join(OUTPUT_DIR, "candidate_ranking_summary.csv")
+    summary_df.to_csv(summary_path, index=False)
+    print(f"Saved {summary_path}")
+
+    print("\nCandidate retrieval summary:")
+    print(summary_df.to_string(index=False, float_format=lambda value: f"{value:.4f}"))
+
+    fig, ax = plt.subplots(figsize=(7.5, 4.8))
+    hit_rates = [per_task_df[f"hit_at_{k}"].mean() for k in top_k_values]
+    ax.bar([str(k) for k in top_k_values], hit_rates, color="#4CAF50", alpha=0.85)
+    ax.set_ylim(0, 1.0)
+    ax.set_xlabel("Top-k candidate list size")
+    ax.set_ylabel("Hit rate for true best model")
+    ax.set_title("How Often the True Best Model Appears in Top-k")
+    ax.grid(axis="y", alpha=0.3)
+    for idx, value in enumerate(hit_rates):
+        ax.text(idx, value + 0.02, f"{value:.2f}", ha="center", va="bottom")
+    plt.tight_layout()
+    fig_path = os.path.join(FIGURES_DIR, "candidate_hit_rate.png")
+    plt.savefig(fig_path, dpi=150)
+    plt.close()
+    print(f"Saved {fig_path}")
+
+    return per_task_df, summary_df
 
 
 # ============================================================
@@ -616,6 +724,7 @@ def plot_tier_comparison(tier_results, tier_dfs, families_order):
 
 RUN_MODEL_COMPARISON = False  # Set True to re-run model comparison
 RUN_TIER_EVALUATION = False  # Set True to re-run tier eval + family breakdown
+RUN_CANDIDATE_ANALYSIS = False  # Set True to re-run candidate ranking analysis
 
 
 # ============================================================
@@ -677,6 +786,14 @@ if __name__ == "__main__":
             tier_dfs[tiers_list[0]].sort_values("mean_r2", ascending=False).index
         )
         print(f"Loaded family breakdown from {TIER_COMPARISON_PATH}")
+
+    candidate_summary_path = os.path.join(OUTPUT_DIR, "candidate_ranking_summary.csv")
+    if RUN_CANDIDATE_ANALYSIS or not os.path.exists(candidate_summary_path):
+        print("\n Candidate Ranking Analysis")
+        _, candidate_summary = run_candidate_analysis(df, rf_params=best_params)
+    else:
+        candidate_summary = pd.read_csv(candidate_summary_path)
+        print(f"Loaded candidate ranking summary from {candidate_summary_path}")
 
     print("\n Visualization")
     plot_tier_comparison(tier_results, tier_dfs, families_order)
