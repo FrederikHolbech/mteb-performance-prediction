@@ -44,7 +44,7 @@ python scripts/01_collect_data.py
 
 # Step 2: Build the unified training matrix
 #   - Merges MTEB results + model metadata + task metadata + tokenizer features
-#   - Computes derived features (head_dim, ffn_ratio, norm_rank, etc.)
+#   - Builds the final training matrix and normalized-rank target
 python scripts/02_build_training_data.py
 
 # Step 3: Extract tokenizer-level features
@@ -54,7 +54,7 @@ python scripts/02_build_training_data.py
 python scripts/03_extract_tokenizer_features.py
 
 # Step 4: Train and evaluate across three feature tiers
-#   - Leave-one-task-out CV with Ridge and RandomForest
+#   - Leave-one-task-out CV with model comparison, tier comparison, and candidate ranking
 #   - Per-family performance breakdown
 python scripts/04_train_and_evaluate.py
 
@@ -82,12 +82,13 @@ Features are organized into three tiers based on data acquisition difficulty:
 
 | Tier | Source | # Features | Description |
 |------|--------|-----------|-------------|
-| **Tier 1** | API-only | 54 | Config.json, tokenizer.json, HF API, MTEB metadata |
-| **Tier 2** | + README | 69 | + Training data keywords, method flags from README scraping |
-| **Tier 3** | + Discarded | 72 | + Download count, likes, and model age (popularity proxies) |
+| **Tier 1** | API-only | 48 | Config.json, tokenizer.json, HF API, and MTEB task metadata |
+| **Tier 2** | + README | 63 | + Training data keywords, method flags, and dataset-count features from README scraping |
+| **Tier 3** | + Discarded | 66 | + Download count, likes, and model age (popularity proxies) |
 
 ## Key Results
 
-- **Tier 1** RandomForest R² ≈ 0.610 — architecture and tokenizer features alone predict ~61% of ranking variance
-- **Tier 2** RandomForest R² ≈ 0.626 — README scraping adds +0.016 R²
-- **Tier 3** RandomForest R² ≈ 0.630 — popularity features contribute negligibly (+0.004)
+- **Tier 1** RandomForest R² ≈ 0.544 — API and tokenizer metadata alone explain a substantial share of ranking variance
+- **Tier 2** RandomForest R² ≈ 0.555 — README scraping adds a modest +0.010 R²
+- **Tier 3** RandomForest R² ≈ 0.557 — popularity features contribute negligibly (+0.002)
+- **Candidate ranking** The true best model appears in the top-10 predicted candidates for 78% of held-out tasks

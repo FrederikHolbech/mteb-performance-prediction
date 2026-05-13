@@ -75,12 +75,11 @@ def build_model_level_dataframe():
         & (model_level["param_count"] > 0)
     ].copy()
 
-    model_level["log_param_count"] = np.log10(model_level["param_count"])
     return model_level
 
 
 def compute_summary(model_level):
-    predictors = model_level[["log_param_count", "num_layers", "hidden_size"]]
+    predictors = model_level[["param_count", "num_layers", "hidden_size"]]
     target = model_level["norm_rank"]
 
     predictors_z = (predictors - predictors.mean()) / predictors.std(ddof=0)
@@ -97,7 +96,7 @@ def compute_summary(model_level):
         )
 
     for feature in ["num_layers", "hidden_size"]:
-        _, preds = fit_linear(model_level[["log_param_count"]], model_level[feature])
+        _, preds = fit_linear(model_level[["param_count"]], model_level[feature])
         residuals = model_level[feature] - preds
         corr = np.corrcoef(residuals, model_level["norm_rank"])[0, 1]
         model_level[f"{feature}_residual"] = residuals
@@ -141,7 +140,7 @@ def compute_summary(model_level):
 
 def compute_by_size_bin(model_level):
     working = model_level.copy()
-    working["size_bin"] = pd.qcut(working["log_param_count"], q=5, duplicates="drop")
+    working["size_bin"] = pd.qcut(working["param_count"], q=5, duplicates="drop")
 
     rows = []
     for size_bin, group in working.groupby("size_bin", observed=False):
