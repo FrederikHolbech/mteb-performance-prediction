@@ -10,11 +10,13 @@ This repository contains the code for the bachelor thesis on **predicting MTEB b
 │   └── utils.py          # Utility functions (encoding, keyword extraction, etc.)
 ├── scripts/              # Reproducible pipeline (run in order)
 │   ├── 01_collect_data.py              # Fetch MTEB results + HF model/task metadata
-│   ├── 02_build_training_data.py       # Merge into single training matrix
-│   ├── 03_extract_tokenizer_features.py # Extract tokenizer-level features
+│   ├── 02_extract_tokenizer_features.py # Extract tokenizer-level features
+│   ├── 03_build_training_data.py       # Merge into single training matrix
 │   ├── 04_train_and_evaluate.py        # Three-tier leave-one-task-out evaluation
 │   ├── 05_shap_analysis.py            # Per-family SHAP analysis across tiers
-│   └── 06_feature_analysis.py         # Correlation, clusters, ablation, lean model
+│   ├── 06_feature_analysis.py         # Correlation, clusters, ablation, lean model
+│   ├── 12_train_frozen_demo_model.py  # Train the frozen demo inference model
+│   └── 13_single_model_demo.py        # Predict one model and compare to live MTEB results
 ├── inputEncodings/       # Unicode script data (for tokenizer analysis)
 │   └── data/
 │       ├── Scripts.txt           # Unicode script ranges
@@ -42,16 +44,16 @@ Run the scripts in order. Each script reads from `data/` and writes its outputs 
 #   - Takes ~30-60 minutes due to HF API rate limits
 python scripts/01_collect_data.py
 
-# Step 2: Build the unified training matrix
-#   - Merges MTEB results + model metadata + task metadata + tokenizer features
-#   - Builds the final training matrix and normalized-rank target
-python scripts/02_build_training_data.py
-
-# Step 3: Extract tokenizer-level features
+# Step 2: Extract tokenizer-level features
 #   - Downloads tokenizer.json for each model and parses vocabulary
 #   - Extracts: subword lengths, script coverage, continuation tokens, normalizer info
 #   - Takes ~5 minutes; supports checkpointing for resume
-python scripts/03_extract_tokenizer_features.py
+python scripts/02_extract_tokenizer_features.py
+
+# Step 3: Build the unified training matrix
+#   - Merges MTEB results + model metadata + task metadata + tokenizer features
+#   - Builds the final training matrix and normalized-rank target
+python scripts/03_build_training_data.py
 
 # Step 4: Train and evaluate across three feature tiers
 #   - Leave-one-task-out CV with model comparison, tier comparison, and candidate ranking
@@ -72,9 +74,35 @@ python scripts/05_shap_analysis.py
 python scripts/06_feature_analysis.py
 ```
 
-> **Note:** Steps 1 and 3 require internet access for HuggingFace API calls. Step 2 depends on Step 3's output (`tokenizer_features.csv`), so run Step 3 before Step 2 on a fresh setup, or run Step 2 twice.
+> **Note:** Steps 1 and 2 require internet access for HuggingFace API calls.
 
 > **Caching:** Scripts 04–06 cache their expensive results to CSV. On subsequent runs, set the `RUN_*` flags at the top of each script to `False` to skip recomputation and load from cache.
+
+## Demo Workflow
+
+For the oral defense demo, the repository includes a frozen-model inference path that stays aligned with the thesis setup: one RandomForest trained on the full pooled training matrix, then applied to a single Hugging Face model.
+
+The default Tier 2 frozen artifact is committed to the repository via Git LFS, so after cloning you can run `scripts/13_single_model_demo.py` directly as long as Git LFS has pulled the model file.
+
+Train the frozen demo artifact once:
+
+```bash
+python scripts/12_train_frozen_demo_model.py --tier "Tier 2 (+ README)"
+```
+
+Then run the single-model demo:
+
+```bash
+python scripts/13_single_model_demo.py BAAI/bge-small-en-v1.5
+```
+
+To show only one task family in the output while still using the same all-task frozen model:
+
+```bash
+python scripts/13_single_model_demo.py BAAI/bge-small-en-v1.5 --task-family Retrieval
+```
+
+The demo uses live MTEB results for the chosen model, local `data/task_metadata.csv` for task metadata, and writes task-level and family-level comparison CSVs plus a figure under `output/`.
 
 ## Feature Tiers
 

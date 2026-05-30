@@ -134,7 +134,7 @@ def build_training_data():
         print(f"Merged tokenizer features ({len(tok_cols) - 1} columns)")
     else:
         print(
-            "WARNING: tokenizer_features.csv not found — run 03_extract_tokenizer_features.py first"
+            "WARNING: tokenizer_features.csv not found — run 02_extract_tokenizer_features.py first"
         )
 
     # --- Encode booleans ---
