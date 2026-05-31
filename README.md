@@ -84,6 +84,16 @@ For the oral defense demo, the repository includes a frozen-model inference path
 
 The default Tier 2 frozen artifact is committed to the repository via Git LFS, so after cloning you can run `scripts/13_single_model_demo.py` directly as long as Git LFS has pulled the model file.
 
+To keep a few clean comparison cases out of the frozen-model training set, the committed demo artifact excludes the model IDs listed in [demo_holdout_models.txt](demo_holdout_models.txt):
+
+- `BAAI/bge-small-en-v1.5`
+- `intfloat/e5-base-v2`
+- `sentence-transformers/all-MiniLM-L6-v2`
+- `mixedbread-ai/mxbai-embed-large-v1`
+- `nvidia/llama-embed-nemotron-8b`
+
+Those are the easiest models to use when you want a demo comparison against current MTEB results without that same model identity having been part of frozen-model training.
+
 Train the frozen demo artifact once:
 
 ```bash
@@ -95,6 +105,8 @@ Then run the single-model demo:
 ```bash
 python scripts/13_single_model_demo.py BAAI/bge-small-en-v1.5
 ```
+
+The script prints a `Training status` line showing whether the queried model was excluded from training, seen during frozen-model training, or absent from the original scraped training data.
 
 To show only one task family in the output while still using the same all-task frozen model:
 

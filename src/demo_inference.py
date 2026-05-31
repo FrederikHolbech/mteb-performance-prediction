@@ -12,6 +12,8 @@ from src.config import OUTPUT_DIR, RF_PARAMS, TIER1_CATEGORICALS, TIERS
 from src.utils import encode_booleans
 
 DEMO_MODEL_DIR = os.path.join(OUTPUT_DIR, "demo_models")
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DEMO_HOLDOUT_MODELS_PATH = os.path.join(REPO_ROOT, "demo_holdout_models.txt")
 
 
 def slugify_name(value):
@@ -25,6 +27,21 @@ def get_demo_artifact_path(tier_name):
     tier_slug = slugify_name(tier_name)
     filename = f"frozen_demo_model_{tier_slug}.pkl"
     return os.path.join(DEMO_MODEL_DIR, filename)
+
+
+def load_demo_holdout_models(path=DEMO_HOLDOUT_MODELS_PATH):
+    """Load the default list of model IDs excluded from frozen demo training."""
+    if not os.path.exists(path):
+        return []
+
+    holdout_models = []
+    with open(path, encoding="utf-8") as handle:
+        for line in handle:
+            model_id = line.strip()
+            if not model_id or model_id.startswith("#"):
+                continue
+            holdout_models.append(model_id)
+    return holdout_models
 
 
 def _prepare_feature_frame(df, features):
@@ -88,10 +105,16 @@ def transform_with_artifact(df, artifact):
     return matrix
 
 
-def train_frozen_demo_artifact(train_df, tier_name, rf_params=None):
+def train_frozen_demo_artifact(
+    train_df, tier_name, rf_params=None, excluded_models=None
+):
     """Train one frozen RandomForest artifact for fast demo inference."""
     features = TIERS[tier_name]
     working_df = train_df.copy()
+    excluded_models = sorted(set(excluded_models or []))
+
+    if excluded_models:
+        working_df = working_df[~working_df["model_name"].isin(excluded_models)].copy()
 
     if working_df.empty:
         raise ValueError(
@@ -114,6 +137,10 @@ def train_frozen_demo_artifact(train_df, tier_name, rf_params=None):
         "n_rows": int(len(working_df)),
         "n_tasks": int(working_df["task_name"].nunique()),
         "n_models": int(working_df["model_name"].nunique()),
+        "excluded_models": excluded_models,
+        "trained_model_names": sorted(
+            working_df["model_name"].dropna().unique().tolist()
+        ),
     }
 
 

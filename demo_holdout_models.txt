@@ -1,0 +1,5 @@
+BAAI/bge-small-en-v1.5
+intfloat/e5-base-v2
+sentence-transformers/all-MiniLM-L6-v2
+mixedbread-ai/mxbai-embed-large-v1
+nvidia/llama-embed-nemotron-8b

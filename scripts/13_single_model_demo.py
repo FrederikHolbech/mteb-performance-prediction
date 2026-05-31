@@ -517,6 +517,7 @@ def predict_single_model_fast(model_id, tier_name, task_family=None):
     return (
         comparison_df.sort_values("actual_norm_rank", ascending=False),
         family_summary,
+        artifact,
     )
 
 
@@ -575,7 +576,7 @@ def save_outputs(model_id, comparison_df, family_summary, task_family=None):
 
 def main():
     args = parse_args()
-    comparison_df, family_summary = predict_single_model_fast(
+    comparison_df, family_summary, artifact = predict_single_model_fast(
         args.model_id,
         args.tier,
         task_family=args.task_family,
@@ -587,6 +588,12 @@ def main():
     print(f"Saved {task_path}")
     print(f"Saved {family_path}")
     print(f"Saved {figure_path}")
+    if args.model_id in set(artifact.get("excluded_models", [])):
+        print("Training status: holdout model (excluded from frozen-model training)")
+    elif args.model_id in set(artifact.get("trained_model_names", [])):
+        print("Training status: seen during frozen-model training")
+    else:
+        print("Training status: not present in frozen-model training data")
     print("\nPer-family summary:")
     print(
         family_summary.to_string(index=False, float_format=lambda value: f"{value:.4f}")
